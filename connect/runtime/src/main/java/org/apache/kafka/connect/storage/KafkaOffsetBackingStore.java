@@ -81,7 +81,7 @@ public class KafkaOffsetBackingStore implements OffsetBackingStore {
      * @param topicAdmin the topic admin to use for creating and querying metadata for the offsets topic
      * @return an offset store backed by the given topic and Kafka clients
      */
-    public static KafkaOffsetBackingStore forTask(
+    public static KafkaOffsetBackingStore readWriteStore(
             String topic,
             Producer<byte[], byte[]> producer,
             Consumer<byte[], byte[]> consumer,
@@ -112,7 +112,7 @@ public class KafkaOffsetBackingStore implements OffsetBackingStore {
      * @param topicAdmin the topic admin to use for creating and querying metadata for the offsets topic
      * @return a read-only offset store backed by the given topic and Kafka clients
      */
-    public static KafkaOffsetBackingStore forConnector(
+    public static KafkaOffsetBackingStore readOnlyStore(
             String topic,
             Consumer<byte[], byte[]> consumer,
             TopicAdmin topicAdmin

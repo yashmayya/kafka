@@ -19,6 +19,7 @@ package org.apache.kafka.connect.runtime.rest.resources;
 import com.fasterxml.jackson.core.type.TypeReference;
 
 import javax.ws.rs.DefaultValue;
+import javax.ws.rs.PATCH;
 import javax.ws.rs.core.HttpHeaders;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,8 +33,10 @@ import org.apache.kafka.connect.runtime.rest.RestClient;
 import org.apache.kafka.connect.runtime.rest.RestServerConfig;
 import org.apache.kafka.connect.runtime.rest.entities.ActiveTopicsInfo;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorInfo;
+import org.apache.kafka.connect.runtime.rest.entities.ConnectorOffsets;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorStateInfo;
 import org.apache.kafka.connect.runtime.rest.entities.CreateConnectorRequest;
+import org.apache.kafka.connect.runtime.rest.entities.Message;
 import org.apache.kafka.connect.runtime.rest.entities.TaskInfo;
 import org.apache.kafka.connect.runtime.rest.errors.ConnectRestException;
 import org.apache.kafka.connect.util.ConnectorTaskId;
@@ -347,6 +350,24 @@ public class ConnectorsResource implements ConnectResource {
         FutureCallback<Herder.Created<ConnectorInfo>> cb = new FutureCallback<>();
         herder.deleteConnectorConfig(connector, cb);
         requestHandler.completeOrForwardRequest(cb, "/connectors/" + connector, "DELETE", headers, null, forward);
+    }
+
+    @PATCH
+    @Path("/{connector}/offsets")
+    @Operation(summary = "Alter the offsets for the specified connector connector")
+    public Response alterConnectorOffsets(final @Parameter(hidden = true) @QueryParam("forward") Boolean forward,
+                                      final @Context HttpHeaders headers,
+                                      final @PathParam("connector") String connector,
+                                      final ConnectorOffsets offsets) throws Throwable {
+        if (offsets.offsets().isEmpty()) {
+            throw new BadRequestException("Partitions / offsets cannot be empty for an alter offsets request");
+        }
+
+        FutureCallback<Message> cb = new FutureCallback<>();
+        herder.alterConnectorOffsets(connector, offsets.toMap(), cb);
+        Message msg = requestHandler.completeOrForwardRequest(cb, "/connectors/" + connector + "/offsets", "PATCH", headers, offsets,
+                new TypeReference<Message>() { }, new IdentityTranslator<>(), forward);
+        return Response.ok().entity(msg).build();
     }
 
     // Check whether the connector name from the url matches the one (if there is one) provided in the connectorConfig

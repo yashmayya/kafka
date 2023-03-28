@@ -31,12 +31,14 @@ import org.apache.kafka.connect.runtime.SinkConnectorConfig;
 import org.apache.kafka.connect.runtime.SourceConnectorConfig;
 import org.apache.kafka.connect.runtime.TargetState;
 import org.apache.kafka.connect.runtime.Worker;
-import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.runtime.rest.InternalRequestSignature;
 import org.apache.kafka.connect.runtime.rest.entities.ConfigInfos;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorInfo;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorStateInfo;
+import org.apache.kafka.connect.runtime.rest.entities.Message;
 import org.apache.kafka.connect.runtime.rest.entities.TaskInfo;
+import org.apache.kafka.connect.runtime.rest.errors.BadRequestException;
+import org.apache.kafka.connect.storage.ClusterConfigState;
 import org.apache.kafka.connect.storage.ConfigBackingStore;
 import org.apache.kafka.connect.storage.MemoryConfigBackingStore;
 import org.apache.kafka.connect.storage.MemoryStatusBackingStore;
@@ -68,7 +70,8 @@ public class StandaloneHerder extends AbstractHerder {
     private final AtomicLong requestSeqNum = new AtomicLong();
     private final ScheduledExecutorService requestExecutorService;
 
-    private ClusterConfigState configState;
+    // Visible for testing
+    ClusterConfigState configState;
 
     public StandaloneHerder(Worker worker, String kafkaClusterId,
                             ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy) {
@@ -367,6 +370,31 @@ public class StandaloneHerder extends AbstractHerder {
         // Complete the restart request
         log.info("Completed {}", plan);
         cb.onCompletion(null, plan.restartConnectorStateInfo());
+    }
+
+    @Override
+    public synchronized void alterConnectorOffsets(String connName, Map<Map<String, ?>, Map<String, ?>> offsets, Callback<Message> cb) {
+        if (!configState.contains(connName)) {
+            cb.onCompletion(new NotFoundException("Connector " + connName + " not found", null), null);
+            return;
+        }
+
+        if (configState.targetState(connName) != TargetState.STOPPED || configState.taskCount(connName) != 0) {
+            cb.onCompletion(new BadRequestException("The connector needs to be stopped before its offsets can be altered"), null);
+            return;
+        }
+
+        try {
+            if (worker.alterConnectorOffsets(connName, offsets, configState.connectorConfig(connName))) {
+                cb.onCompletion(null, new Message("The offsets for this connector have been altered successfully"));
+            } else {
+                cb.onCompletion(null, new Message("The Connect framework managed offsets for this connector have been " +
+                        "altered successfully. However, if this connector manages offsets externally, they will need to be " +
+                        "manually altered in the system that the connector uses."));
+            }
+        } catch (Throwable t) {
+            cb.onCompletion(t, null);
+        }
     }
 
     private void startConnector(String connName, Callback<TargetState> onStart) {

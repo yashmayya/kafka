@@ -32,9 +32,12 @@ import org.apache.kafka.connect.runtime.rest.RestClient;
 import org.apache.kafka.connect.runtime.rest.RestServerConfig;
 import org.apache.kafka.connect.runtime.rest.entities.ActiveTopicsInfo;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorInfo;
+import org.apache.kafka.connect.runtime.rest.entities.ConnectorOffset;
+import org.apache.kafka.connect.runtime.rest.entities.ConnectorOffsets;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorStateInfo;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorType;
 import org.apache.kafka.connect.runtime.rest.entities.CreateConnectorRequest;
+import org.apache.kafka.connect.runtime.rest.entities.Message;
 import org.apache.kafka.connect.runtime.rest.entities.TaskInfo;
 import org.apache.kafka.connect.runtime.rest.errors.ConnectRestException;
 import org.apache.kafka.connect.util.Callback;
@@ -761,6 +764,55 @@ public class ConnectorsResourceTest {
         ConnectRestException e = assertThrows(ConnectRestException.class, () ->
             connectorsResource.destroyConnector(CONNECTOR_NAME, NULL_HEADERS, FORWARD));
         assertTrue(e.getMessage().contains("no known leader URL"));
+    }
+
+    @Test
+    public void testAlterOffsetsEmptyOffsets() {
+        assertThrows(BadRequestException.class, () -> connectorsResource.alterConnectorOffsets(
+                false, NULL_HEADERS, CONNECTOR_NAME, new ConnectorOffsets(Collections.emptyList())));
+    }
+
+    @Test
+    public void testAlterOffsetsNotLeader() throws Throwable {
+        Map<String, ?> partition = new HashMap<>();
+        Map<String, ?> offset = new HashMap<>();
+        ConnectorOffset connectorOffset = new ConnectorOffset(partition, offset);
+        ConnectorOffsets body = new ConnectorOffsets(Collections.singletonList(connectorOffset));
+
+        final ArgumentCaptor<Callback<Message>> cb = ArgumentCaptor.forClass(Callback.class);
+        expectAndCallbackNotLeaderException(cb).when(herder).alterConnectorOffsets(eq(CONNECTOR_NAME), eq(body.toMap()), cb.capture());
+
+        when(restClient.httpRequest(eq(LEADER_URL + "connectors/" + CONNECTOR_NAME + "/offsets?forward=true"), eq("PATCH"), isNull(), eq(body), any()))
+                .thenReturn(new RestClient.HttpResponse<>(200, new HashMap<>(), new Message("")));
+        connectorsResource.alterConnectorOffsets(null, NULL_HEADERS, CONNECTOR_NAME, body);
+    }
+
+    @Test
+    public void testAlterOffsetsConnectorNotFound() {
+        Map<String, ?> partition = new HashMap<>();
+        Map<String, ?> offset = new HashMap<>();
+        ConnectorOffset connectorOffset = new ConnectorOffset(partition, offset);
+        ConnectorOffsets body = new ConnectorOffsets(Collections.singletonList(connectorOffset));
+        final ArgumentCaptor<Callback<Message>> cb = ArgumentCaptor.forClass(Callback.class);
+        expectAndCallbackException(cb, new NotFoundException("Connector not found"))
+                .when(herder).alterConnectorOffsets(eq(CONNECTOR_NAME), eq(body.toMap()), cb.capture());
+
+        assertThrows(NotFoundException.class, () -> connectorsResource.alterConnectorOffsets(null, NULL_HEADERS, CONNECTOR_NAME, body));
+    }
+
+    @Test
+    public void testAlterOffsets() throws Throwable {
+        Map<String, ?> partition = Collections.singletonMap("partitionKey", "partitionValue");
+        Map<String, ?> offset = Collections.singletonMap("offsetKey", "offsetValue");
+        ConnectorOffset connectorOffset = new ConnectorOffset(partition, offset);
+        ConnectorOffsets body = new ConnectorOffsets(Collections.singletonList(connectorOffset));
+
+        final ArgumentCaptor<Callback<Message>> cb = ArgumentCaptor.forClass(Callback.class);
+        doAnswer(invocation -> {
+            cb.getValue().onCompletion(null, new Message("The offsets for this connector have been altered successfully"));
+            return null;
+        }).when(herder).alterConnectorOffsets(eq(CONNECTOR_NAME), eq(body.toMap()), cb.capture());
+        connectorsResource.alterConnectorOffsets(null, NULL_HEADERS, CONNECTOR_NAME, body);
     }
 
     private <T> byte[] serializeAsBytes(final T value) throws IOException {

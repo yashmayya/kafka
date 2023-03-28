@@ -53,6 +53,7 @@ public class MonitorableSourceConnector extends SampleSourceConnector {
     public static final String TOPIC_CONFIG = "topic";
     public static final String MESSAGES_PER_POLL_CONFIG = "messages.per.poll";
     public static final String MAX_MESSAGES_PER_SECOND_CONFIG = "throughput";
+    public static final String MAX_MESSAGES_PRODUCED_CONFIG = "max.messages";
 
     public static final String CUSTOM_EXACTLY_ONCE_SUPPORT_CONFIG = "custom.exactly.once.support";
     public static final String EXACTLY_ONCE_SUPPORTED = "supported";
@@ -65,6 +66,9 @@ public class MonitorableSourceConnector extends SampleSourceConnector {
     public static final String TRANSACTION_BOUNDARIES_UNSUPPORTED = "unsupported";
     public static final String TRANSACTION_BOUNDARIES_NULL = "null";
     public static final String TRANSACTION_BOUNDARIES_FAIL = "fail";
+
+    // Boolean valued configuration that determines whether MonitorableSourceConnector::alterOffsets should return true or false
+    public static final String ALTER_OFFSETS_RESULT = "alter.offsets.result";
 
     private String connectorName;
     private ConnectorHandle connectorHandle;
@@ -146,6 +150,11 @@ public class MonitorableSourceConnector extends SampleSourceConnector {
         }
     }
 
+    @Override
+    public boolean alterOffsets(Map<String, String> connectorConfig, Map<Map<String, ?>, Map<String, ?>> offsets) {
+        return Boolean.parseBoolean(connectorConfig.get(ALTER_OFFSETS_RESULT));
+    }
+
     public static String taskId(String connectorName, int taskId) {
         return connectorName + "-" + taskId;
     }
@@ -159,6 +168,7 @@ public class MonitorableSourceConnector extends SampleSourceConnector {
         private long seqno;
         private int batchSize;
         private ThroughputThrottler throttler;
+        private long maxMessages;
 
         private long priorTransactionBoundary;
         private long nextTransactionBoundary;
@@ -182,6 +192,7 @@ public class MonitorableSourceConnector extends SampleSourceConnector {
             seqno = startingSeqno;
             log.info("Started {} task {} with properties {}", this.getClass().getSimpleName(), taskId, props);
             throttler = new ThroughputThrottler(Long.parseLong(props.getOrDefault(MAX_MESSAGES_PER_SECOND_CONFIG, "-1")), System.currentTimeMillis());
+            maxMessages = Long.parseLong(props.getOrDefault(MAX_MESSAGES_PRODUCED_CONFIG, String.valueOf(Long.MAX_VALUE)));
             taskHandle.recordTaskStart();
             priorTransactionBoundary = 0;
             nextTransactionBoundary = 1;
@@ -194,12 +205,16 @@ public class MonitorableSourceConnector extends SampleSourceConnector {
         @Override
         public List<SourceRecord> poll() {
             if (!stopped) {
+                // Don't return any more records since we've already produced the configured maximum number.
+                if (seqno >= maxMessages) {
+                    return null;
+                }
                 if (throttler.shouldThrottle(seqno - startingSeqno, System.currentTimeMillis())) {
                     throttler.throttle();
                 }
                 taskHandle.record(batchSize);
-                log.trace("Returning batch of {} records", batchSize);
-                return LongStream.range(0, batchSize)
+                log.trace("Returning batch of {} records", Math.min(maxMessages - seqno, batchSize));
+                return LongStream.range(0, Math.min(maxMessages - seqno, batchSize))
                         .mapToObj(i -> {
                             seqno++;
                             SourceRecord record = new SourceRecord(

@@ -188,7 +188,9 @@ public class OffsetStorageWriter {
                         + "offsets under namespace {}. This likely won't recover unless the "
                         + "unserializable partition or offset information is overwritten.", namespace);
                 log.error("Cause of serialization failure:", t);
-                callback.onCompletion(t, null);
+                if (callback != null) {
+                    callback.onCompletion(t, null);
+                }
                 return null;
             }
 
