@@ -1212,8 +1212,8 @@ public class Worker {
                 connectorClientConfigOverridePolicy,
                 kafkaClusterId,
                 ConnectorType.SINK);
-        final Admin admin = adminFactory.apply(adminConfig);
-        try {
+
+        try (Admin admin = adminFactory.apply(adminConfig)) {
             Timer timer = time.timer(ALTER_OFFSETS_TIMEOUT_MS);
             SinkConnectorConfig sinkConnectorConfig = new SinkConnectorConfig(plugins, connectorConfig);
             String groupId = (String) baseConsumerConfigs(
@@ -1271,8 +1271,6 @@ public class Worker {
                 }
             }
             return alterOffsetsResult;
-        } finally {
-            Utils.closeQuietly(admin, "Offset alter admin for sink connector " + connName);
         }
     }
 
@@ -1297,9 +1295,14 @@ public class Worker {
         }
 
         SourceConnectorConfig sourceConfig = new SourceConnectorConfig(plugins, connectorConfig, config.topicCreationEnable());
-        Map<String, Object> producerProps = baseProducerConfigs(connName, "connector-offset-producer-" + connName, config, sourceConfig,
+        // TODO: Use connector specific transactional ID - will require additional ACLs over what is described in KIP-618 (unless wildcard prefix is used)
+        Map<String, Object> producerProps = config.exactlyOnceSourceEnabled()
+                ? exactlyOnceSourceTaskProducerConfigs(new ConnectorTaskId(connName, 0), config, sourceConfig,
+                connector.getClass(), connectorClientConfigOverridePolicy, kafkaClusterId)
+                : baseProducerConfigs(connName, "connector-offset-producer-" + connName, config, sourceConfig,
                 connector.getClass(), connectorClientConfigOverridePolicy, kafkaClusterId);
         KafkaProducer<byte[], byte[]> producer = new KafkaProducer<>(producerProps);
+
         ConnectorOffsetBackingStore offsetStore = config.exactlyOnceSourceEnabled()
                 ? offsetStoreForExactlyOnceSourceConnector(sourceConfig, connName, connector, producer)
                 : offsetStoreForRegularSourceConnector(sourceConfig, connName, connector, producer);
@@ -1320,10 +1323,17 @@ public class Worker {
         timer.update();
 
         try {
+            if (config.exactlyOnceSourceEnabled()) {
+                producer.beginTransaction();
+            }
             log.trace("Committing the following partition offsets for source connector {}: {}", connName, offsets);
             Future<Void> offsetFlushFuture = offsetWriter.doFlush(null);
             if (offsetFlushFuture == null) {
                 throw new ConnectException("Failed to serialize the provided offsets before committing");
+            }
+
+            if (config.exactlyOnceSourceEnabled()) {
+                producer.commitTransaction();
             } else {
                 offsetFlushFuture.get(timer.remainingMs(), TimeUnit.MILLISECONDS);
             }

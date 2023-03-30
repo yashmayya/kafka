@@ -56,7 +56,7 @@ public class SinkUtilsTest {
         partition.put(ConnectorOffset.KAFKA_PARTITION_KEY, "not a number");
         // bad partition key
         e = assertThrows(ConnectException.class, () -> SinkUtils.validateAndParseSinkConnectorOffsets(partitionOffsets));
-        assertThat(e.getMessage(), containsString("Failed to parse a Kafka partition value in the provided offsets."));
+        assertThat(e.getMessage(), containsString("Failed to parse the following Kafka partition value in the provided offsets: 'not a number'"));
 
         partition.remove(ConnectorOffset.KAFKA_TOPIC_KEY);
         partition.put(ConnectorOffset.KAFKA_PARTITION_KEY, "5");
@@ -81,7 +81,7 @@ public class SinkUtilsTest {
         // bad offset key
         offset.put(ConnectorOffset.KAFKA_OFFSET_KEY, "not a number");
         e = assertThrows(ConnectException.class, () -> SinkUtils.validateAndParseSinkConnectorOffsets(partitionOffsets));
-        assertThat(e.getMessage(), containsString("Failed to parse a Kafka offset value in the provided offsets"));
+        assertThat(e.getMessage(), containsString("Failed to parse the following Kafka offset value in the provided offsets: 'not a number'"));
     }
 
     @Test

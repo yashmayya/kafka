@@ -1020,29 +1020,6 @@ public class StandaloneHerderTest {
     }
 
     @Test
-    public void testAlterConnectorOffsetsConnectorInStoppedStateButTaskCountNotZeroYet() {
-        PowerMock.replayAll();
-
-        herder.configState = new ClusterConfigState(
-                10,
-                null,
-                Collections.singletonMap(CONNECTOR_NAME, 3),
-                Collections.singletonMap(CONNECTOR_NAME, connectorConfig(SourceSink.SOURCE)),
-                Collections.singletonMap(CONNECTOR_NAME, TargetState.STOPPED),
-                Collections.emptyMap(),
-                Collections.emptyMap(),
-                Collections.emptyMap(),
-                Collections.emptySet(),
-                Collections.emptySet()
-        );
-        FutureCallback<Message> alterOffsetsCallback = new FutureCallback<>();
-        herder.alterConnectorOffsets(CONNECTOR_NAME, new HashMap<>(), alterOffsetsCallback);
-        ExecutionException e = assertThrows(ExecutionException.class, () -> alterOffsetsCallback.get(1000L, TimeUnit.MILLISECONDS));
-        assertTrue(e.getCause() instanceof BadRequestException);
-        PowerMock.verifyAll();
-    }
-
-    @Test
     public void testAlterConnectorOffsets() throws Exception {
         EasyMock.expect(worker.alterConnectorOffsets(eq(CONNECTOR_NAME), anyObject(Map.class), eq(connectorConfig(SourceSink.SOURCE))))
                 .andReturn(true);

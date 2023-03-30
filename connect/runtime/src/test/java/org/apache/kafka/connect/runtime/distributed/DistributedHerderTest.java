@@ -4119,6 +4119,7 @@ public class DistributedHerderTest {
         PowerMock.expectLastCall();
         member.ensureActive();
         PowerMock.expectLastCall();
+        expectConfigRefreshAndSnapshot(SNAPSHOT);
         member.poll(EasyMock.anyInt());
         PowerMock.expectLastCall();
 
@@ -4149,6 +4150,7 @@ public class DistributedHerderTest {
         PowerMock.expectLastCall();
         member.ensureActive();
         PowerMock.expectLastCall();
+        expectConfigRefreshAndSnapshot(SNAPSHOT);
         member.poll(EasyMock.anyInt());
         PowerMock.expectLastCall();
 
@@ -4178,6 +4180,7 @@ public class DistributedHerderTest {
         member.wakeup();
         PowerMock.expectLastCall();
         member.ensureActive();
+        expectConfigRefreshAndSnapshot(SNAPSHOT_STOPPED_CONN1);
         PowerMock.expectLastCall();
         member.poll(EasyMock.anyInt());
         PowerMock.expectLastCall();
@@ -4210,6 +4213,7 @@ public class DistributedHerderTest {
         PowerMock.expectLastCall();
         member.ensureActive();
         PowerMock.expectLastCall();
+        expectConfigRefreshAndSnapshot(SNAPSHOT_STOPPED_CONN1);
         member.poll(EasyMock.anyInt());
         PowerMock.expectLastCall();
         EasyMock.expect(worker.alterConnectorOffsets(CONN1, offsets, CONN1_CONFIG))
@@ -4249,6 +4253,7 @@ public class DistributedHerderTest {
         PowerMock.expectLastCall().anyTimes();
         member.ensureActive();
         PowerMock.expectLastCall().anyTimes();
+        expectConfigRefreshAndSnapshot(SNAPSHOT_STOPPED_CONN1);
         EasyMock.expect(herder.connectorType(EasyMock.anyObject())).andReturn(ConnectorType.SOURCE).anyTimes();
 
         // Expect a round of zombie fencing to occur
@@ -4270,8 +4275,11 @@ public class DistributedHerderTest {
         }
         EasyMock.expect(worker.alterConnectorOffsets(CONN1, offsets, CONN1_CONFIG)).andReturn(true);
 
-        // Handle the second alter connector offsets request. No zombie fencing request is expected now since we already did a round of zombie
-        // fencing last time and no new tasks came up in the meanwhile
+        // Handle the second alter connector offsets request. No zombie fencing request to the worker is expected now since we
+        // already did a round of zombie fencing last time and no new tasks came up in the meanwhile. The config snapshot is
+        // refreshed once at the beginning of the DistributedHerder::alterConnectorOffsets method and once before checking
+        // whether zombie fencing is required.
+        expectConfigRefreshAndSnapshot(SNAPSHOT_STOPPED_CONN1_FENCED);
         expectConfigRefreshAndSnapshot(SNAPSHOT_STOPPED_CONN1_FENCED);
         EasyMock.expect(worker.alterConnectorOffsets(CONN1, offsets, CONN1_CONFIG)).andReturn(true);
 
@@ -4317,6 +4325,7 @@ public class DistributedHerderTest {
         PowerMock.expectLastCall().anyTimes();
         member.ensureActive();
         PowerMock.expectLastCall().anyTimes();
+        expectConfigRefreshAndSnapshot(SNAPSHOT_STOPPED_CONN1);
         EasyMock.expect(herder.connectorType(EasyMock.anyObject())).andReturn(ConnectorType.SOURCE).anyTimes();
 
         // Expect a round of zombie fencing to occur

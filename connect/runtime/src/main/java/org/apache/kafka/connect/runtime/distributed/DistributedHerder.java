@@ -1438,6 +1438,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
         log.trace("Submitting alter offsets request for connector '{}'", connName);
 
         addRequest(() -> {
+            refreshConfigSnapshot(workerSyncTimeoutMs);
             if (!alterConnectorOffsetsChecks(connName, callback)) {
                 return null;
             }
@@ -1473,16 +1474,12 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
             }
             // The alter offsets request needs to be processed synchronously for the same reason that it needs to be done on the
             // leader - to ensure that no new tasks are spun up before the offsets are altered.
-            try {
-                if (worker.alterConnectorOffsets(connName, offsets, configState.connectorConfig(connName))) {
-                    callback.onCompletion(null, new Message("The offsets for this connector have been altered successfully"));
-                } else {
-                    callback.onCompletion(null, new Message("The Connect framework managed offsets for this connector have been " +
-                            "altered successfully. However, if this connector manages offsets externally, they will need to be " +
-                            "manually altered in the system that the connector uses."));
-                }
-            } catch (Throwable t) {
-                callback.onCompletion(t, null);
+            if (worker.alterConnectorOffsets(connName, offsets, configState.connectorConfig(connName))) {
+                callback.onCompletion(null, new Message("The offsets for this connector have been altered successfully"));
+            } else {
+                callback.onCompletion(null, new Message("The Connect framework managed offsets for this connector have been " +
+                        "altered successfully. However, if this connector manages offsets externally, they will need to be " +
+                        "manually altered in the system that the connector uses."));
             }
             return null;
         };
